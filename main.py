@@ -2,13 +2,12 @@ import discord
 import os
 from os import listdir
 from discord.ext import bridge, commands
-from plyer import notification
+# from plyer import notification
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = bridge.Bot(command_prefix="!", intents=intents)
-bot.remove_command("help")
 
 
 #Bot events
@@ -17,11 +16,11 @@ bot.remove_command("help")
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    notification.notify(
-        title = 'Bot is online baka',
-        message = 'Bot is online baka',     
-        timeout = 10,
-    )
+    # notification.notify(
+    #     title = 'Bot is online baka',
+    #     message = 'Bot is online baka',     
+    #     timeout = 10,
+    # )
 
 #Before application command runs
 @bot.event
@@ -46,7 +45,7 @@ async def on_command_completion(ctx):
 
 #developer check
 def if_dev_check(ctx):
-    return ctx.message.author.id == 924096612941299762
+    return ctx.author.id in [376343682644836353, 924096612941299762]
 
 #Developer only commands
 class developer(commands.Cog):
@@ -56,9 +55,12 @@ class developer(commands.Cog):
     @bridge.bridge_command()
     @commands.check(if_dev_check)
     async def load(self, ctx, extension):
-        self.bot.load_extension(f'cogs.{extension}')
-        await ctx.send(f'Loaded {extension}')
-        print(f'Loaded {extension}')
+        try:
+            self.bot.load_extension(f'cogs.{extension}')
+            await ctx.send(f'Loaded {extension}')
+            print(f'Loaded {extension}')
+        except discord.errors.ExtensionAlreadyLoaded:
+            await ctx.send(f'{extension} is already loaded')
 
     @bridge.bridge_command()
     @commands.check(if_dev_check)
@@ -79,15 +81,20 @@ class developer(commands.Cog):
     @commands.check(if_dev_check)
     async def restart(self, ctx):
         for filename in os.listdir("./cogs"):
-            if filename.endswith(".py"):
-                bot.reload_extension(f"cogs.{filename[:-3]}")
+            try:
+                if filename.endswith(".py"):
+                    bot.reload_extension(f"cogs.{filename[:-3]}")
+            except:
+                pass
+        await ctx.send("Restart complete!")
 
 #Adds the developer cog included inside main.py
 def setup(bot):
     try:
         bot.add_cog(developer(bot))
-    except:
+    except Exception as e:
         print("Could not load, could be missing a setup function or not intended as a cog. File: " + filename)
+        raise e
 
 bot.add_cog(developer(bot))
 
@@ -100,4 +107,4 @@ for filename in listdir("./cogs"):
         except:
             print("Could not load, could be missing a setup function or not intended as a cog. File: " + filename)
 
-bot.run("TOKEN")
+bot.run(os.getenv("TOKEN"))
