@@ -3,11 +3,39 @@ import os
 from os import listdir
 from discord.ext import bridge, commands
 from plyer import notification
+import asyncpg
+import config
 
 intents = discord.Intents.default()
 intents.message_content = True
+DEFAULT_PREFIX = ","
+TOKEN = config.TOKEN
 
 bot = bridge.Bot(command_prefix=",", intents=intents)
+
+#creates db pool
+async def create_db_pool():
+    bot.db = await asyncpg.create_pool(database = "Flareonbot", user = "postgres", password = "henlowo")
+    print("Connection successful")
+
+#Gets the prefix
+async def get_prefix(bot, message):
+    #If the message is in direct messages
+    if not message.guild:
+        return commands.when_mentioned_or(DEFAULT_PREFIX)(bot, message)
+
+    prefix = await bot.db.fetch('SELECT prefix FROM guilds WHERE "guild_id" = $1', message.guild.id)
+
+    #If the prefix doesn't exist
+    if len(prefix) == 0:
+        await bot.db.execute('INSERT INTO guilds("guild_id", prefix) VALUES ($1, $2)', message.guild.id, DEFAULT_PREFIX)
+    #If there is a prefix
+    else:
+        prefix = prefix[0].get("prefix")
+    
+
+    return commands.when_mentioned_or(prefix)(bot, message)
+
 
 #Bot events
 #----------------------------------------------------------------------------------------------
@@ -24,8 +52,7 @@ async def on_ready():
 #Before application command runs
 @bot.event
 async def on_application_command(ctx):
-    await ctx.defer()
-
+    print(f"{ctx.author} Has used command: {ctx.command}")
 #On application command completion
 @bot.event
 async def on_application_command_completion(ctx):
@@ -34,7 +61,7 @@ async def on_application_command_completion(ctx):
 #Before prefixed command runs
 @bot.event
 async def on_command(ctx):
-    await ctx.defer()
+    print(f"{ctx.author} Has used command: {ctx.command}")
 
 #On prefixed command completion
 @bot.event
@@ -74,24 +101,27 @@ def if_dev_check(ctx):
     return ctx.author.id == 924096612941299762
 
 #Developer only commands
-class developer(commands.Cog):
+class Developer(commands.Cog):
     def __init__(self, bot): 
         self.bot = bot
 
     @bridge.bridge_command(checks = [if_dev_check])
     async def load(self, ctx, extension):
+        "Loads the specified cog"
         self.bot.load_extension(f'cogs.{extension}')
         await ctx.send(f'Loaded {extension}')
         print(f'Loaded {extension}')
 
     @bridge.bridge_command(checks = [if_dev_check])
     async def unload(self, ctx, extension):
+        "Unloads the specified cog"
         self.bot.unload_extension(f'cogs.{extension}')
         await ctx.send(f'Unloaded {extension}')
         print(f'Unloaded {extension}')
 
     @bridge.bridge_command(checks = [if_dev_check])
     async def reload(self, ctx, extension):
+        "Reloads the specified cog"
         self.bot.unload_extension(f'cogs.{extension}')
         self.bot.load_extension(f'cogs.{extension}')
         await ctx.send(f'Reloaded {extension}')
@@ -99,6 +129,7 @@ class developer(commands.Cog):
 
     @bridge.bridge_command(checks = [if_dev_check])
     async def restart(self, ctx):
+        "Restarts all the cogs"
         for filename in os.listdir("./cogs"):
             if filename.endswith(".py"):
                 self.bot.unload_extension(f"cogs.{filename[:-3]}")
@@ -106,15 +137,8 @@ class developer(commands.Cog):
                 print(f"Restarted cog {filename[:-3]}")
                 await ctx.send(f"Restarted cog: {filename[:-3]}")
         
-
-#Adds the developer cog included inside main.py
-def setup(bot):
-    try:
-        bot.add_cog(developer(bot))
-    except:
-        print("Could not load, could be missing a setup function or not intended as a cog. File: " + filename)
-
-bot.add_cog(developer(bot))
+#Adds the developer cog
+bot.add_cog(Developer(bot))
 
 #Loads all the cogs in the cogs folder
 for filename in listdir("./cogs"):
@@ -124,4 +148,6 @@ for filename in listdir("./cogs"):
             print("loaded " + filename)
         except:
             print("Could not load, could be missing a setup function or not intended as a cog. File: " + filename)
-bot.run("TOKEN")
+
+bot.loop.run_until_complete(create_db_pool())
+bot.run(TOKEN)
